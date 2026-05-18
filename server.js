@@ -8,6 +8,7 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 5174);
+const host = process.env.API_HOST ?? '127.0.0.1';
 
 app.use(cors());
 app.use(express.json());
@@ -951,6 +952,6 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-app.listen(port, '127.0.0.1', () => {
-  console.log(`JHCIS API listening on http://127.0.0.1:${port}`);
+app.listen(port, host, () => {
+  console.log(`JHCIS API listening on http://${host}:${port}`);
 });

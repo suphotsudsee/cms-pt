@@ -1,0 +1,26 @@
+services:
+  app:
+    image: node:22-alpine
+    working_dir: /app
+    command: >
+      sh -c "npm ci &&
+      npx concurrently \"npm run dev:api\" \"npm run dev -- --host 0.0.0.0 --port 5173\""
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: ${API_PORT:-5174}
+      JHCIS_DB_HOST: ${JHCIS_DB_HOST:-host.docker.internal}
+      JHCIS_DB_PORT: ${JHCIS_DB_PORT:-3333}
+      JHCIS_DB_USER: ${JHCIS_DB_USER:-root}
+      JHCIS_DB_PASSWORD: ${JHCIS_DB_PASSWORD:-123456}
+      JHCIS_DB_NAME: ${JHCIS_DB_NAME:-jhcisdb}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "5173:5173"
+      - "${API_PORT:-5174}:${API_PORT:-5174}"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+
+volumes:
+  node_modules:
