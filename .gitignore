@@ -4,3 +4,4 @@ dist/
 *.local
 *.log
 node_modules/.tmp/
+.env
