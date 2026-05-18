@@ -1,6 +1,7 @@
 import type { DashboardSummary } from '../types/dashboard';
 import type {
   AgeDistributionItem,
+  AgePatientsResponse,
   ChargeLineItem,
   IllnessGroupSummary,
   IllnessPatientsResponse,
@@ -108,6 +109,26 @@ export async function fetchAgeCostReport(
 ): Promise<PaginatedAgeCostReport> {
   return apiGet<PaginatedAgeCostReport>(
     `/api/reports/illness/age-costs?${toSearchParams(filters, {
+      illness_group: illnessGroup,
+      age_group: ageGroup,
+      page,
+      page_size: pageSize,
+      sort_by: sort.sortBy,
+      sort_order: sort.sortOrder,
+    }).toString()}`,
+  );
+}
+
+export async function fetchAgePatients(
+  filters: VisitFilters,
+  illnessGroup: string,
+  ageGroup: string,
+  page: number,
+  pageSize: number,
+  sort: ReportSortState,
+): Promise<AgePatientsResponse> {
+  return apiGet<AgePatientsResponse>(
+    `/api/reports/illness/age-patients?${toSearchParams(filters, {
       illness_group: illnessGroup,
       age_group: ageGroup,
       page,

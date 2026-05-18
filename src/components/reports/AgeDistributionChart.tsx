@@ -4,10 +4,11 @@ import type { AgeDistributionItem } from '../../types/report';
 interface AgeDistributionChartProps {
   data: AgeDistributionItem[];
   groupLabel: string;
+  onPatientBarClick: (ageGroup: string) => void;
   onCostBarClick: (ageGroup: string) => void;
 }
 
-export function AgeDistributionChart({ data, groupLabel, onCostBarClick }: AgeDistributionChartProps) {
+export function AgeDistributionChart({ data, groupLabel, onPatientBarClick, onCostBarClick }: AgeDistributionChartProps) {
   const [metric, setMetric] = useState<'patients' | 'cost'>('patients');
   const values = data.map((item) => (metric === 'patients' ? item.patient_count : item.total_cost));
   const maxValue = Math.max(...values, 0);
@@ -48,13 +49,13 @@ export function AgeDistributionChart({ data, groupLabel, onCostBarClick }: AgeDi
               <div className="text-xs font-medium text-slate-700">{formatValue(value)}</div>
               <button
                 type="button"
-                disabled={metric !== 'cost' || value <= 0}
-                onClick={() => onCostBarClick(item.age_group)}
+                disabled={value <= 0}
+                onClick={() => (metric === 'patients' ? onPatientBarClick(item.age_group) : onCostBarClick(item.age_group))}
                 className="flex h-44 w-full items-end focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-default"
                 title={`${item.age_group} ปี: ${formatValue(value)}`}
               >
                 <span
-                  className={`w-full rounded-t-md transition-all ${metric === 'cost' && value > 0 ? 'bg-blue-700 hover:bg-blue-800' : 'bg-blue-600'}`}
+                  className={`w-full rounded-t-md transition-all ${value > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-600'}`}
                   style={{ height: `${height}%` }}
                 />
               </button>

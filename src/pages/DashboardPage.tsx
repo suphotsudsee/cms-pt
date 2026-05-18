@@ -19,6 +19,7 @@ import {
   exportIllnessReport,
   exportVisits,
   fetchAppConfig,
+  fetchAgePatients,
   fetchDashboardSummary,
   fetchDepartments,
   fetchAgeCostReport,
@@ -36,6 +37,7 @@ import { users } from '../api/mockData';
 import { DashboardFilters } from '../components/filters/DashboardFilters';
 import { AgeDistributionChart } from '../components/reports/AgeDistributionChart';
 import { AgeCostReportTable } from '../components/reports/AgeCostReportTable';
+import { AgePatientsPanel } from '../components/reports/AgePatientsPanel';
 import { ChargeLinesPanel } from '../components/reports/ChargeLinesPanel';
 import { IllnessPatientsPanel } from '../components/reports/IllnessPatientsPanel';
 import { IllnessReportTable } from '../components/reports/IllnessReportTable';
@@ -44,6 +46,7 @@ import { VisitTable } from '../components/visits/VisitTable';
 import type { DashboardSummary } from '../types/dashboard';
 import type {
   AgeDistributionItem,
+  AgePatientsResponse,
   AgeCostItem,
   ChargeLineItem,
   IllnessGroupSummary,
@@ -77,8 +80,9 @@ const emptyIllnessPatients: IllnessPatientsResponse = {
   total_pages: 1,
 };
 const emptyAgeCostReport: PaginatedAgeCostReport = { items: [], page: 1, page_size: defaultPageSize, total_items: 0, total_pages: 1 };
+const emptyAgePatients: AgePatientsResponse = { age_group: '', items: [], page: 1, page_size: defaultPageSize, total_items: 0, total_pages: 1 };
 
-type ViewMode = 'dashboard' | 'illness' | 'illnessPatients' | 'ageCosts' | 'chargeLines';
+type ViewMode = 'dashboard' | 'illness' | 'illnessPatients' | 'agePatients' | 'ageCosts' | 'chargeLines';
 type IllnessGroup = 'all' | 'health_promotion' | 'prevention' | 'treatment' | 'rehabilitation';
 
 export function DashboardPage() {
@@ -93,6 +97,7 @@ export function DashboardPage() {
   const [tableData, setTableData] = useState<PaginatedVisits>(emptyTable);
   const [illnessReport, setIllnessReport] = useState<PaginatedIllnessReport>(emptyIllnessReport);
   const [illnessPatients, setIllnessPatients] = useState<IllnessPatientsResponse>(emptyIllnessPatients);
+  const [agePatients, setAgePatients] = useState<AgePatientsResponse>(emptyAgePatients);
   const [ageCostReport, setAgeCostReport] = useState<PaginatedAgeCostReport>(emptyAgeCostReport);
   const [selectedDiagnosis, setSelectedDiagnosis] = useState<IllnessReportItem | null>(null);
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<string | null>(null);
@@ -105,19 +110,23 @@ export function DashboardPage() {
   const [illnessPageSize, setIllnessPageSize] = useState(defaultPageSize);
   const [illnessPatientsPage, setIllnessPatientsPage] = useState(1);
   const [illnessPatientsPageSize, setIllnessPatientsPageSize] = useState(defaultPageSize);
+  const [agePatientsPage, setAgePatientsPage] = useState(1);
+  const [agePatientsPageSize, setAgePatientsPageSize] = useState(defaultPageSize);
   const [ageCostPage, setAgeCostPage] = useState(1);
   const [ageCostPageSize, setAgeCostPageSize] = useState(defaultPageSize);
   const [selectedIllnessGroup, setSelectedIllnessGroup] = useState<IllnessGroup>('all');
   const [visitSort, setVisitSort] = useState<SortState>({ sortBy: 'visit_at', sortOrder: 'desc' });
   const [illnessSort, setIllnessSort] = useState<SortState>({ sortBy: 'visit_count', sortOrder: 'desc' });
   const [illnessPatientsSort, setIllnessPatientsSort] = useState<SortState>({ sortBy: 'last_visit_date', sortOrder: 'desc' });
+  const [agePatientsSort, setAgePatientsSort] = useState<SortState>({ sortBy: 'last_visit_date', sortOrder: 'desc' });
   const [ageCostSort, setAgeCostSort] = useState<SortState>({ sortBy: 'total_cost', sortOrder: 'desc' });
   const [loading, setLoading] = useState(true);
   const [illnessPatientsLoading, setIllnessPatientsLoading] = useState(false);
+  const [agePatientsLoading, setAgePatientsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const activeFilters = useMemo(() => filters, [filters]);
-  const isIllnessMode = viewMode === 'illness' || viewMode === 'illnessPatients' || viewMode === 'ageCosts' || viewMode === 'chargeLines';
+  const isIllnessMode = viewMode === 'illness' || viewMode === 'illnessPatients' || viewMode === 'agePatients' || viewMode === 'ageCosts' || viewMode === 'chargeLines';
   const selectedIllnessGroupLabel = {
     all: 'ทุกกลุ่ม',
     health_promotion: 'ส่งเสริมสุขภาพ',
@@ -254,6 +263,29 @@ export function DashboardPage() {
   }, [activeFilters, selectedDiagnosis, illnessPatientsPage, illnessPatientsPageSize, illnessPatientsSort, selectedIllnessGroup, viewMode]);
 
   useEffect(() => {
+    if (viewMode !== 'agePatients' || !selectedAgeGroup) return;
+
+    let ignore = false;
+    setAgePatientsLoading(true);
+    setError(null);
+
+    fetchAgePatients(activeFilters, selectedIllnessGroup, selectedAgeGroup, agePatientsPage, agePatientsPageSize, agePatientsSort)
+      .then((result) => {
+        if (!ignore) setAgePatients(result);
+      })
+      .catch((err: Error) => {
+        if (!ignore) setError(err.message);
+      })
+      .finally(() => {
+        if (!ignore) setAgePatientsLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeFilters, selectedIllnessGroup, selectedAgeGroup, agePatientsPage, agePatientsPageSize, agePatientsSort, viewMode]);
+
+  useEffect(() => {
     if (viewMode !== 'ageCosts' || !selectedAgeGroup) return;
 
     let ignore = false;
@@ -277,14 +309,16 @@ export function DashboardPage() {
     setPage(1);
     setIllnessPage(1);
     setIllnessPatientsPage(1);
+    setAgePatientsPage(1);
     setSelectedDiagnosis(null);
     setSelectedAgeGroup(null);
     setSelectedCostVisit(null);
     setChargeLines([]);
     setIllnessPatients(emptyIllnessPatients);
+    setAgePatients(emptyAgePatients);
     setAgeCostReport(emptyAgeCostReport);
     setSelectedIllnessGroup('all');
-    if (viewMode === 'illnessPatients' || viewMode === 'ageCosts' || viewMode === 'chargeLines') setViewMode('illness');
+    if (viewMode === 'illnessPatients' || viewMode === 'agePatients' || viewMode === 'ageCosts' || viewMode === 'chargeLines') setViewMode('illness');
   };
 
   const handleRoleChange = (role: UserRole) => {
@@ -294,6 +328,7 @@ export function DashboardPage() {
     setPage(1);
     setIllnessPage(1);
     setIllnessPatientsPage(1);
+    setAgePatientsPage(1);
   };
 
   const handleUpdateStatus = (_visitId: string, _status: VisitStatus, _note?: string) => {
@@ -311,19 +346,33 @@ export function DashboardPage() {
     setSelectedIllnessGroup((current) => (current === group ? 'all' : group));
     setIllnessPage(1);
     setIllnessPatientsPage(1);
+    setAgePatientsPage(1);
     setSelectedDiagnosis(null);
     setIllnessPatients(emptyIllnessPatients);
     setSelectedAgeGroup(null);
+    setAgePatients(emptyAgePatients);
     setSelectedCostVisit(null);
     setChargeLines([]);
     setAgeCostReport(emptyAgeCostReport);
     setViewMode('illness');
   };
 
+  const handlePatientBarClick = (ageGroup: string) => {
+    setSelectedAgeGroup(ageGroup);
+    setAgePatients(emptyAgePatients);
+    setAgePatientsPage(1);
+    setSelectedDiagnosis(null);
+    setSelectedCostVisit(null);
+    setChargeLines([]);
+    setViewMode('agePatients');
+  };
+
   const handleCostBarClick = (ageGroup: string) => {
     setSelectedAgeGroup(ageGroup);
     setAgeCostReport(emptyAgeCostReport);
     setAgeCostPage(1);
+    setAgePatients(emptyAgePatients);
+    setAgePatientsPage(1);
     setSelectedCostVisit(null);
     setChargeLines([]);
     setViewMode('ageCosts');
@@ -412,6 +461,18 @@ export function DashboardPage() {
               >
                 <Users className="h-4 w-4" aria-hidden="true" />
                 รายชื่อผู้ป่วย ICD {selectedDiagnosis.diagnosis_code}
+              </button>
+            ) : null}
+            {selectedAgeGroup ? (
+              <button
+                type="button"
+                onClick={() => setViewMode('agePatients')}
+                className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  viewMode === 'agePatients' ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Users className="h-4 w-4" aria-hidden="true" />
+                รายชื่ออายุ {selectedAgeGroup}
               </button>
             ) : null}
             {selectedAgeGroup ? (
@@ -525,7 +586,12 @@ export function DashboardPage() {
           )}
 
           {isIllnessMode ? (
-            <AgeDistributionChart data={ageDistribution} groupLabel={selectedIllnessGroupLabel} onCostBarClick={handleCostBarClick} />
+            <AgeDistributionChart
+              data={ageDistribution}
+              groupLabel={selectedIllnessGroupLabel}
+              onPatientBarClick={handlePatientBarClick}
+              onCostBarClick={handleCostBarClick}
+            />
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -589,6 +655,23 @@ export function DashboardPage() {
               onPageSizeChange={(nextPageSize) => {
                 setIllnessPatientsPageSize(nextPageSize);
                 setIllnessPatientsPage(1);
+              }}
+            />
+          ) : viewMode === 'agePatients' && selectedAgeGroup ? (
+            <AgePatientsPanel
+              ageGroup={selectedAgeGroup}
+              data={agePatients}
+              pageSize={agePatientsPageSize}
+              sort={agePatientsSort}
+              loading={agePatientsLoading}
+              onSortChange={(nextSort) => {
+                setAgePatientsSort(nextSort);
+                setAgePatientsPage(1);
+              }}
+              onPageChange={setAgePatientsPage}
+              onPageSizeChange={(nextPageSize) => {
+                setAgePatientsPageSize(nextPageSize);
+                setAgePatientsPage(1);
               }}
             />
           ) : viewMode === 'ageCosts' && selectedAgeGroup ? (

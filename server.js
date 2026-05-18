@@ -485,6 +485,7 @@ app.get('/api/reports/illness/summary', async (req, res, next) => {
     const { where, params } = buildWhere(visitFilterQuery);
     const illnessWhere = buildIllnessWhere(req.query);
     const groupCase = illnessGroupSql();
+    const chargeLineTotal = chargeLineTotalSql('v');
 
     const [rows] = await pool.query(
       `SELECT
@@ -500,7 +501,7 @@ app.get('/api/reports/illness/summary', async (req, res, next) => {
         SELECT
           ${groupCase} illness_group,
           COUNT(DISTINCT CONCAT(v.pcucode, ':', v.visitno)) visit_count,
-          SUM(COALESCE(v.money1, 0) + COALESCE(v.money2, 0) + COALESCE(v.money3, 0) + COALESCE(v.moneynoclaim, 0)) total_cost
+          SUM(${chargeLineTotal}) total_cost
         FROM visit v
         JOIN visitdiag vd ON vd.pcucode = v.pcucode AND vd.visitno = v.visitno
         LEFT JOIN cdisease cd ON cd.diseasecode = vd.diagcode
@@ -536,6 +537,7 @@ app.get('/api/reports/illness/age-distribution', async (req, res, next) => {
     const visitFilterQuery = { ...req.query, search: '' };
     const { where, params } = buildWhere(visitFilterQuery);
     const illnessWhere = buildIllnessWhere(req.query);
+    const chargeLineTotal = chargeLineTotalSql('v');
 
     const [rows] = await pool.query(
       `SELECT
@@ -553,7 +555,7 @@ app.get('/api/reports/illness/age-distribution', async (req, res, next) => {
         SELECT
           CONCAT(COALESCE(v.pcucodeperson, v.pcucode), ':', v.pid) patient_key,
           TIMESTAMPDIFF(YEAR, p.birth, v.visitdate) age_years,
-          COALESCE(v.money1, 0) + COALESCE(v.money2, 0) + COALESCE(v.money3, 0) + COALESCE(v.moneynoclaim, 0) total_cost
+          ${chargeLineTotal} total_cost
         FROM visit v
         JOIN visitdiag vd ON vd.pcucode = v.pcucode AND vd.visitno = v.visitno
         LEFT JOIN cdisease cd ON cd.diseasecode = vd.diagcode
@@ -600,6 +602,20 @@ function ageGroupCondition(ageGroup) {
   };
 }
 
+function chargeLineTotalSql(visitAlias = 'v') {
+  return `(
+    COALESCE((SELECT SUM(COALESCE(vd.realprice, 0) * COALESCE(vd.unit, 1)) FROM visitdrug vd WHERE vd.pcucode = ${visitAlias}.pcucode AND vd.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(ve.realprice, ve.costprice, 0)) FROM visitepi ve WHERE ve.pcucode = ${visitAlias}.pcucode AND ve.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(vf.realprice, vf.costprice, 0) * COALESCE(vf.unit, 1)) FROM visitfp vf WHERE vf.pcucode = ${visitAlias}.pcucode AND vf.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(va.ancsell, va.anccost, 0)) FROM visitanc va WHERE va.pcucode = ${visitAlias}.pcucode AND va.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(vm.mothercaresell, vm.mothercarecost, 0)) FROM visitancmothercare vm WHERE vm.pcucode = ${visitAlias}.pcucode AND vm.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(vb.babycaresell, vb.babycarecost, 0)) FROM visitbabycare vb WHERE vb.pcucode = ${visitAlias}.pcucode AND vb.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(vlb.sell, vlb.cost, 0)) FROM visitlabblood vlb WHERE vlb.pcucode = ${visitAlias}.pcucode AND vlb.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(vlc.sell, vlc.cost, 0)) FROM visitlabcancer vlc WHERE vlc.pcucode = ${visitAlias}.pcucode AND vlc.visitno = ${visitAlias}.visitno), 0)
+    + COALESCE((SELECT SUM(COALESCE(vls.cost, 0)) FROM visitlabsugarblood vls WHERE vls.pcucode = ${visitAlias}.pcucode AND vls.visitno = ${visitAlias}.visitno), 0)
+  )`;
+}
+
 app.get('/api/reports/illness/age-costs', async (req, res, next) => {
   try {
     const ageGroup = String(req.query.age_group ?? '').trim();
@@ -621,6 +637,7 @@ app.get('/api/reports/illness/age-costs', async (req, res, next) => {
       total_cost: 'total_cost',
     };
     const costOrder = orderBy(req.query, costSorts, 'total_cost');
+    const chargeLineTotal = chargeLineTotalSql('v');
 
     const baseSql = `
       SELECT
@@ -637,7 +654,23 @@ app.get('/api/reports/illness/age-costs', async (req, res, next) => {
         COALESCE(v.money2, 0) money2,
         COALESCE(v.money3, 0) money3,
         COALESCE(v.moneynoclaim, 0) moneynoclaim,
-        COALESCE(v.money1, 0) + COALESCE(v.money2, 0) + COALESCE(v.money3, 0) + COALESCE(v.moneynoclaim, 0) total_cost
+        ${chargeLineTotal} total_cost
+      FROM visit v
+      JOIN visitdiag vd ON vd.pcucode = v.pcucode AND vd.visitno = v.visitno
+      LEFT JOIN cdisease cd ON cd.diseasecode = vd.diagcode
+      LEFT JOIN person p ON p.pcucodeperson = v.pcucodeperson AND p.pid = v.pid
+      LEFT JOIN ctitle t ON t.titlecode = p.prename
+      LEFT JOIN cright cr ON cr.rightcode = v.rightcode
+      WHERE ${where}
+        AND vd.diagcode IS NOT NULL
+        AND vd.diagcode <> ''
+        AND p.birth IS NOT NULL
+        AND TIMESTAMPDIFF(YEAR, p.birth, v.visitdate) BETWEEN 0 AND 120
+        AND ${ageCondition.sql}
+        ${illnessWhere.where}
+    `;
+    const countSql = `
+      SELECT COUNT(*) total
       FROM visit v
       JOIN visitdiag vd ON vd.pcucode = v.pcucode AND vd.visitno = v.visitno
       LEFT JOIN cdisease cd ON cd.diseasecode = vd.diagcode
@@ -655,7 +688,7 @@ app.get('/api/reports/illness/age-costs', async (req, res, next) => {
     const allParams = [...params, ...ageCondition.params, ...illnessWhere.params];
 
     const [[countResult], [rows]] = await Promise.all([
-      pool.query(`SELECT COUNT(*) total FROM (${baseSql}) cost_rows`, allParams),
+      pool.query(countSql, allParams),
       pool.query(`${baseSql} ORDER BY ${costOrder}, visit_date DESC LIMIT ? OFFSET ?`, [...allParams, pageSize, offset]),
     ]);
     const totalItems = Number(countResult[0]?.total ?? 0);
@@ -676,6 +709,80 @@ app.get('/api/reports/illness/age-costs', async (req, res, next) => {
         money3: Number(row.money3 ?? 0),
         moneynoclaim: Number(row.moneynoclaim ?? 0),
         total_cost: Number(row.total_cost ?? 0),
+      })),
+      page,
+      page_size: pageSize,
+      total_items: totalItems,
+      total_pages: Math.max(1, Math.ceil(totalItems / pageSize)),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/reports/illness/age-patients', async (req, res, next) => {
+  try {
+    const ageGroup = String(req.query.age_group ?? '').trim();
+    const page = Math.max(Number(req.query.page ?? 1), 1);
+    const pageSize = Math.min(Math.max(Number(req.query.page_size ?? 20), 1), 100);
+    const offset = (page - 1) * pageSize;
+    const visitFilterQuery = { ...req.query, search: '' };
+    const { where, params } = buildWhere(visitFilterQuery);
+    const illnessWhere = buildIllnessWhere(req.query);
+    const ageCondition = ageGroupCondition(ageGroup);
+    const patientSorts = {
+      hn: 'hn',
+      patient_name: 'patient_name',
+      age_years: 'age_years',
+      visit_count: 'visit_count',
+      first_visit_date: 'first_visit_date',
+      last_visit_date: 'last_visit_date',
+      latest_symptoms: 'latest_symptoms',
+    };
+    const patientOrder = orderBy(req.query, patientSorts, 'last_visit_date');
+
+    const groupSql = `
+      SELECT
+        COALESCE(NULLIF(CAST(p.hcode AS CHAR), ''), CAST(p.pid AS CHAR)) hn,
+        CONCAT(COALESCE(t.titlename, ''), p.fname, ' ', p.lname) patient_name,
+        MAX(TIMESTAMPDIFF(YEAR, p.birth, v.visitdate)) age_years,
+        COUNT(DISTINCT CONCAT(v.pcucode, ':', v.visitno)) visit_count,
+        MIN(v.visitdate) first_visit_date,
+        MAX(v.visitdate) last_visit_date,
+        MAX(v.symptoms) latest_symptoms
+      FROM visit v
+      JOIN visitdiag vd ON vd.pcucode = v.pcucode AND vd.visitno = v.visitno
+      LEFT JOIN cdisease cd ON cd.diseasecode = vd.diagcode
+      LEFT JOIN person p ON p.pcucodeperson = v.pcucodeperson AND p.pid = v.pid
+      LEFT JOIN ctitle t ON t.titlecode = p.prename
+      LEFT JOIN cright cr ON cr.rightcode = v.rightcode
+      WHERE ${where}
+        AND vd.diagcode IS NOT NULL
+        AND vd.diagcode <> ''
+        AND p.birth IS NOT NULL
+        AND TIMESTAMPDIFF(YEAR, p.birth, v.visitdate) BETWEEN 0 AND 120
+        AND ${ageCondition.sql}
+        ${illnessWhere.where}
+      GROUP BY hn, patient_name
+    `;
+    const allParams = [...params, ...ageCondition.params, ...illnessWhere.params];
+
+    const [[countResult], [rows]] = await Promise.all([
+      pool.query(`SELECT COUNT(*) total FROM (${groupSql}) patient_groups`, allParams),
+      pool.query(`${groupSql} ORDER BY ${patientOrder}, patient_name ASC LIMIT ? OFFSET ?`, [...allParams, pageSize, offset]),
+    ]);
+    const totalItems = Number(countResult[0]?.total ?? 0);
+
+    res.json({
+      age_group: ageGroup,
+      items: rows.map((row) => ({
+        hn: String(row.hn ?? ''),
+        patient_name: row.patient_name?.trim() || 'ไม่ระบุชื่อ',
+        age_years: Number(row.age_years ?? 0),
+        visit_count: Number(row.visit_count ?? 0),
+        first_visit_date: row.first_visit_date,
+        last_visit_date: row.last_visit_date,
+        latest_symptoms: row.latest_symptoms ?? '',
       })),
       page,
       page_size: pageSize,

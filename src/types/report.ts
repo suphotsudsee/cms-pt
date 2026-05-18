@@ -55,6 +55,25 @@ export interface IllnessPatientsResponse {
   total_pages: number;
 }
 
+export interface AgePatientItem {
+  hn: string;
+  patient_name: string;
+  age_years: number;
+  visit_count: number;
+  first_visit_date: string;
+  last_visit_date: string;
+  latest_symptoms: string;
+}
+
+export interface AgePatientsResponse {
+  age_group: string;
+  items: AgePatientItem[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+}
+
 export interface AgeCostItem {
   pcucode: string;
   visitno: number;
