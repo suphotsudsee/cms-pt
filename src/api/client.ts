@@ -16,6 +16,12 @@ export interface JhcisMeta {
   total_visits: number;
 }
 
+export interface AppConfig {
+  jhcis_db_host: string;
+  jhcis_db_port: number;
+  jhcis_db_name: string;
+}
+
 export function emptyFilters(today = '2026-01-21'): VisitFilters {
   return {
     startDate: today,
@@ -56,6 +62,10 @@ export async function fetchDepartments(): Promise<Department[]> {
 
 export async function fetchJhcisMeta(): Promise<JhcisMeta> {
   return apiGet<JhcisMeta>('/api/meta');
+}
+
+export async function fetchAppConfig(): Promise<AppConfig> {
+  return apiGet<AppConfig>('/api/config');
 }
 
 export async function fetchDashboardSummary(filters: VisitFilters): Promise<DashboardSummary> {

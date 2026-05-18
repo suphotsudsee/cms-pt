@@ -18,6 +18,7 @@ import {
   emptyFilters,
   exportIllnessReport,
   exportVisits,
+  fetchAppConfig,
   fetchDashboardSummary,
   fetchDepartments,
   fetchAgeCostReport,
@@ -29,6 +30,7 @@ import {
   fetchJhcisMeta,
   fetchVisits,
 } from '../api/client';
+import type { AppConfig } from '../api/client';
 import { roleLabels } from '../api/labels';
 import { users } from '../api/mockData';
 import { DashboardFilters } from '../components/filters/DashboardFilters';
@@ -83,6 +85,7 @@ export function DashboardPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const [currentUser, setCurrentUser] = useState<CurrentUser>(users[2]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [filters, setFilters] = useState<VisitFilters>(emptyFilters());
   const [summary, setSummary] = useState<DashboardSummary>(emptySummary);
   const [illnessGroupSummary, setIllnessGroupSummary] = useState<IllnessGroupSummary>(emptyIllnessGroupSummary);
@@ -123,6 +126,20 @@ export function DashboardPage() {
     rehabilitation: 'ฟื้นฟู',
   }[selectedIllnessGroup];
   const money = (value: number) => `(${Math.round(value).toLocaleString('th-TH')} บาท)`;
+
+  useEffect(() => {
+    let ignore = false;
+    fetchAppConfig()
+      .then((config) => {
+        if (!ignore) setAppConfig(config);
+      })
+      .catch((err: Error) => {
+        if (!ignore) setError(err.message);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -335,7 +352,11 @@ export function DashboardPage() {
               Hospital Patient Tracking
             </div>
             <h1 className="text-2xl font-semibold tracking-normal text-slate-950">แดชบอร์ดติดตามสถานะผู้ป่วย</h1>
-            <p className="mt-1 text-sm text-slate-600">อ่านข้อมูลจากฐาน JHCIS `jhcisdb` บน localhost:3333</p>
+            <p className="mt-1 text-sm text-slate-600">
+              {appConfig
+                ? `อ่านข้อมูลจากฐาน JHCIS_DB_NAME=${appConfig.jhcis_db_name} บน JHCIS_DB_HOST=${appConfig.jhcis_db_host} JHCIS_DB_PORT=${appConfig.jhcis_db_port}`
+                : 'กำลังโหลดค่าเชื่อมต่อ JHCIS...'}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="space-y-1">

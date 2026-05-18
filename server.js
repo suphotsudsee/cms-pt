@@ -187,6 +187,14 @@ app.get('/api/health', async (_req, res, next) => {
   }
 });
 
+app.get('/api/config', (_req, res) => {
+  res.json({
+    jhcis_db_host: process.env.JHCIS_DB_HOST ?? 'localhost',
+    jhcis_db_port: Number(process.env.JHCIS_DB_PORT ?? 3333),
+    jhcis_db_name: process.env.JHCIS_DB_NAME ?? 'jhcisdb',
+  });
+});
+
 app.get('/api/departments', async (_req, res, next) => {
   try {
     const [rows] = await pool.query(`
